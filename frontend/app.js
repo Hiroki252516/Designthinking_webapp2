@@ -39,22 +39,25 @@ function renderCode() {
   codeBoxes.forEach((box, index) => {
     box.textContent = code[index] || '';
   });
-  validateCode();
+  updateSubmitState();
 }
 
 function addDigit(digit) {
   if (code.length >= 4) return;
   code += digit;
+  setInputError('');
   renderCode();
 }
 
 function removeDigit() {
   code = code.slice(0, -1);
+  setInputError('');
   renderCode();
 }
 
 function clearCode() {
   code = '';
+  setInputError('');
   renderCode();
 }
 
@@ -63,15 +66,13 @@ function setInputError(message) {
   inputError.classList.toggle('hidden', !message);
 }
 
-function validateCode({ forceMessage = false } = {}) {
-  const isNumeric = /^\d{4}$/.test(code);
-  const isComplete = code.length === 4;
-  const isValid = isNumeric && code === VALID_CODE;
-  const showError = !isValid && (forceMessage || isComplete);
+function updateSubmitState() {
+  const isComplete = /^\d{4}$/.test(code);
+  submitBtn.disabled = !isComplete;
+}
 
-  setInputError(showError ? '番号が無効です' : '');
-  submitBtn.disabled = !isValid;
-  return isValid;
+function isValidCode() {
+  return /^\d{4}$/.test(code) && code === VALID_CODE;
 }
 
 function randomDigits() {
@@ -111,7 +112,11 @@ function formatExpiry(isoString) {
 }
 
 async function play() {
-  if (!validateCode({ forceMessage: true })) return;
+  if (!/^\d{4}$/.test(code)) return;
+  if (!isValidCode()) {
+    setInputError('無効な番号です');
+    return;
+  }
   submitBtn.disabled = true;
   resultMessage.textContent = '抽選中...';
   resultDetail.textContent = '';
