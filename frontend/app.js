@@ -21,11 +21,14 @@ const qrTarget = document.getElementById('qr');
 const couponTokenEl = document.getElementById('coupon-token');
 const couponExpiryEl = document.getElementById('coupon-expiry');
 const backHomeBtn = document.getElementById('back-home');
+const inputError = document.getElementById('input-error');
 
 let code = '';
 let currentCoupon = null;
 let currentExpiry = null;
 let spinTimer = null;
+
+const VALID_CODE = '2026';
 
 function switchScreen(name) {
   Object.values(screens).forEach((screen) => screen.classList.remove('is-active'));
@@ -36,7 +39,7 @@ function renderCode() {
   codeBoxes.forEach((box, index) => {
     box.textContent = code[index] || '';
   });
-  submitBtn.disabled = code.length !== 4;
+  validateCode();
 }
 
 function addDigit(digit) {
@@ -53,6 +56,22 @@ function removeDigit() {
 function clearCode() {
   code = '';
   renderCode();
+}
+
+function setInputError(message) {
+  inputError.textContent = message;
+  inputError.classList.toggle('hidden', !message);
+}
+
+function validateCode({ forceMessage = false } = {}) {
+  const isNumeric = /^\d{4}$/.test(code);
+  const isComplete = code.length === 4;
+  const isValid = isNumeric && code === VALID_CODE;
+  const showError = !isValid && (forceMessage || isComplete);
+
+  setInputError(showError ? '番号が無効です' : '');
+  submitBtn.disabled = !isValid;
+  return isValid;
 }
 
 function randomDigits() {
@@ -92,7 +111,7 @@ function formatExpiry(isoString) {
 }
 
 async function play() {
-  if (code.length !== 4) return;
+  if (!validateCode({ forceMessage: true })) return;
   submitBtn.disabled = true;
   resultMessage.textContent = '抽選中...';
   resultDetail.textContent = '';
@@ -202,7 +221,7 @@ window.addEventListener('keydown', (event) => {
 function initFromQuery() {
   const params = new URLSearchParams(window.location.search);
   const codeParam = params.get('code');
-  if (codeParam && /^\d{4}$/.test(codeParam)) {
+  if (codeParam === VALID_CODE) {
     code = codeParam;
     renderCode();
   }
