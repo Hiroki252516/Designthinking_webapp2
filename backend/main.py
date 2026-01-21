@@ -19,7 +19,9 @@ DB_PATH = os.environ.get("DB_PATH", os.path.join(APP_ROOT, "backend", "app.db"))
 COUPON_SECRET = os.environ.get("COUPON_SECRET", "demo-secret-change-me")
 
 VALID_CODE = "2026"
-VALID_OUTCOME = "win"
+OUTCOME_PENDING = "pending"
+OUTCOME_WIN = "win"
+OUTCOME_LOSE = "lose"
 
 
 class PlayRequest(BaseModel):
@@ -85,17 +87,22 @@ def init_db() -> None:
 			"""
 		)
 		conn.execute("DELETE FROM lid_codes WHERE code != ?", (VALID_CODE,))
-		row = conn.execute("SELECT id, outcome FROM lid_codes WHERE code = ?", (VALID_CODE,)).fetchone()
+		row = conn.execute("SELECT id, outcome, status FROM lid_codes WHERE code = ?", (VALID_CODE,)).fetchone()
 		if row:
-			if row["outcome"] != VALID_OUTCOME:
+			if row["status"] == "new" and row["outcome"] != OUTCOME_PENDING:
 				conn.execute(
 					"UPDATE lid_codes SET outcome = ? WHERE code = ?",
-					(VALID_OUTCOME, VALID_CODE),
+					(OUTCOME_PENDING, VALID_CODE),
+				)
+			elif row["outcome"] not in (OUTCOME_WIN, OUTCOME_LOSE, OUTCOME_PENDING):
+				conn.execute(
+					"UPDATE lid_codes SET outcome = ? WHERE code = ?",
+					(OUTCOME_PENDING, VALID_CODE),
 				)
 		else:
 			conn.execute(
 				"INSERT INTO lid_codes (code, outcome, status) VALUES (?, ?, 'new')",
-				(VALID_CODE, VALID_OUTCOME),
+				(VALID_CODE, OUTCOME_PENDING),
 			)
 		conn.execute("DELETE FROM coupons WHERE lid_code_id NOT IN (SELECT id FROM lid_codes)")
 		conn.execute(
@@ -203,7 +210,7 @@ def play(payload: PlayRequest) -> dict:
 		if not row:
 			conn.execute(
 				"INSERT INTO lid_codes (code, outcome, status) VALUES (?, ?, 'new')",
-				(VALID_CODE, VALID_OUTCOME),
+				(VALID_CODE, OUTCOME_PENDING),
 			)
 			row = conn.execute("SELECT * FROM lid_codes WHERE code = ?", (code,)).fetchone()
 
@@ -225,10 +232,24 @@ def play(payload: PlayRequest) -> dict:
 					"expires_at": coupon["expires_at"],
 				}
 
-		if status == "played" and outcome == "lose":
+		outcome_updated = False
+		if outcome == OUTCOME_PENDING:
+			if status == "new":
+				outcome = OUTCOME_WIN if secrets.randbelow(4) == 0 else OUTCOME_LOSE
+			else:
+				outcome = OUTCOME_LOSE
+			conn.execute(
+				"UPDATE lid_codes SET outcome = ? WHERE id = ?",
+				(outcome, row["id"]),
+			)
+			outcome_updated = True
+
+		if status == "played" and outcome == OUTCOME_LOSE:
+			if outcome_updated:
+				conn.commit()
 			return {"status": "lose", "message": "残念！ハズレです。"}
 
-		if outcome == "win":
+		if outcome == OUTCOME_WIN:
 			token, expires_at = issue_coupon(code)
 			conn.execute(
 				"""
@@ -247,7 +268,7 @@ def play(payload: PlayRequest) -> dict:
 			)
 			conn.execute(
 				"INSERT INTO play_attempts (lid_code_id, created_at, result) VALUES (?, ?, ?)",
-				(row["id"], now_iso(), "win"),
+				(row["id"], now_iso(), OUTCOME_WIN),
 			)
 			conn.commit()
 			return {
@@ -263,7 +284,7 @@ def play(payload: PlayRequest) -> dict:
 		)
 		conn.execute(
 			"INSERT INTO play_attempts (lid_code_id, created_at, result) VALUES (?, ?, ?)",
-			(row["id"], now_iso(), "lose"),
+			(row["id"], now_iso(), OUTCOME_LOSE),
 		)
 		conn.commit()
 		return {"status": "lose", "message": "残念！ハズレです。"}
