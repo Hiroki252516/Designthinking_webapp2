@@ -10,6 +10,7 @@ const submitBtn = document.getElementById('submit-btn');
 const resultMessage = document.getElementById('result-message');
 const resultDetail = document.getElementById('result-detail');
 const showCouponBtn = document.getElementById('show-coupon');
+const startRouletteBtn = document.getElementById('start-roulette');
 const retryBtn = document.getElementById('retry');
 const slotMachine = document.getElementById('slot-machine');
 const reels = [
@@ -27,6 +28,8 @@ let code = '';
 let currentCoupon = null;
 let currentExpiry = null;
 let spinTimer = null;
+let pendingCode = null;
+let isRunning = false;
 
 const VALID_CODES = ['2027', '2028', '2029', '2030', '2031', '2032', '2033', '2034', '2035'];
 
@@ -89,18 +92,27 @@ function setReels(digits) {
   });
 }
 
-function spinReels(durationMs) {
+function startSpin() {
   slotMachine.classList.add('spinning');
+  if (spinTimer) {
+    clearInterval(spinTimer);
+  }
   spinTimer = setInterval(() => {
     setReels(randomDigits());
   }, 80);
+}
 
+function stopSpin() {
+  if (spinTimer) {
+    clearInterval(spinTimer);
+    spinTimer = null;
+  }
+  slotMachine.classList.remove('spinning');
+}
+
+function delay(ms) {
   return new Promise((resolve) => {
-    setTimeout(() => {
-      clearInterval(spinTimer);
-      slotMachine.classList.remove('spinning');
-      resolve();
-    }, durationMs);
+    setTimeout(resolve, ms);
   });
 }
 
@@ -111,50 +123,87 @@ function formatExpiry(isoString) {
   return `有効期限: ${date.toLocaleString('ja-JP')}`;
 }
 
-async function play() {
+function resetResultScreen() {
+  stopSpin();
+  setReels([0, 0, 0]);
+  resultMessage.textContent = 'ルーレットを実行してください';
+  resultDetail.textContent = '「ルーレットを実行する」を押すと抽選が始まります。';
+  showCouponBtn.classList.add('hidden');
+  startRouletteBtn.classList.remove('hidden');
+  startRouletteBtn.disabled = false;
+  currentCoupon = null;
+  currentExpiry = null;
+  isRunning = false;
+}
+
+function confirmCode() {
   if (!/^\d{4}$/.test(code)) return;
   if (!isValidCode()) {
     setInputError('無効な番号です');
     return;
   }
-  submitBtn.disabled = true;
+  pendingCode = code;
+  resetResultScreen();
+  switchScreen('result');
+}
+
+async function startRoulette() {
+  if (isRunning || !pendingCode) return;
+  isRunning = true;
+  startRouletteBtn.disabled = true;
+  resultMessage.textContent = '抽選中...';
+  resultDetail.textContent = '';
+  showCouponBtn.classList.add('hidden');
+  startSpin();
+  const startedAt = Date.now();
 
   let data = null;
   try {
     const response = await fetch('/api/play', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lid_code: code })
+      body: JSON.stringify({ lid_code: pendingCode })
     });
     if (!response.ok) {
       throw new Error('API error');
     }
     data = await response.json();
   } catch (error) {
-    submitBtn.disabled = false;
-    setInputError('通信エラー。時間をおいて再試行してください。');
+    const elapsed = Date.now() - startedAt;
+    if (elapsed < 1400) {
+      await delay(1400 - elapsed);
+    }
+    stopSpin();
+    resultMessage.textContent = '通信エラー';
+    resultDetail.textContent = '時間をおいて再試行してください。';
+    startRouletteBtn.disabled = false;
+    isRunning = false;
     return;
   }
 
+  const elapsed = Date.now() - startedAt;
+  if (elapsed < 1400) {
+    await delay(1400 - elapsed);
+  }
+  stopSpin();
+
   if (data.status === 'invalid') {
-    submitBtn.disabled = false;
-    setInputError(data.message || '無効な番号です');
+    resultMessage.textContent = data.message || '無効な番号です';
+    resultDetail.textContent = 'トップに戻って番号を確認してください。';
+    startRouletteBtn.disabled = false;
+    isRunning = false;
     return;
   }
 
   if (data.status !== 'win' && data.status !== 'lose') {
-    submitBtn.disabled = false;
-    setInputError(data.message || 'エラーが発生しました。');
+    resultMessage.textContent = 'エラーが発生しました。';
+    resultDetail.textContent = data.message || '時間をおいて再試行してください。';
+    startRouletteBtn.disabled = false;
+    isRunning = false;
     return;
   }
 
-  resultMessage.textContent = '抽選中...';
-  resultDetail.textContent = '';
-  showCouponBtn.classList.add('hidden');
-  switchScreen('result');
-
-  const spinPromise = spinReels(1400);
-  await spinPromise;
+  startRouletteBtn.classList.add('hidden');
 
   if (data.status === 'win') {
     setReels([7, 7, 7]);
@@ -172,7 +221,7 @@ async function play() {
     resultMessage.textContent = '残念...';
     resultDetail.textContent = data.message || 'また挑戦してください。';
   }
-  submitBtn.disabled = false;
+  isRunning = false;
 }
 
 function renderCoupon() {
@@ -202,7 +251,9 @@ keypad.addEventListener('click', (event) => {
   }
 });
 
-submitBtn.addEventListener('click', play);
+submitBtn.addEventListener('click', confirmCode);
+
+startRouletteBtn.addEventListener('click', startRoulette);
 
 showCouponBtn.addEventListener('click', () => {
   renderCoupon();
@@ -211,11 +262,15 @@ showCouponBtn.addEventListener('click', () => {
 
 retryBtn.addEventListener('click', () => {
   clearCode();
+  pendingCode = null;
+  resetResultScreen();
   switchScreen('input');
 });
 
 backHomeBtn.addEventListener('click', () => {
   clearCode();
+  pendingCode = null;
+  resetResultScreen();
   switchScreen('input');
 });
 
@@ -226,7 +281,7 @@ window.addEventListener('keydown', (event) => {
   } else if (event.key === 'Backspace') {
     removeDigit();
   } else if (event.key === 'Enter') {
-    play();
+    confirmCode();
   }
 });
 

@@ -1,38 +1,17 @@
-# AGENTS Instructions
+<INSTRUCTIONS>
+目的: ルーレット実行の開始をユーザー操作に変更する。
 
-Goal
-- Replace the single valid identifier with the 9 valid identifiers: 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035.
-- Each valid identifier is single-use. After a roulette play (win or lose), reusing the same identifier must be treated as invalid and behave exactly like an invalid input (show the same error message, no roulette screen).
+要件:
+- 有効な識別番号を入力して確認ボタンを押した後、ルーレット実行画面に遷移する点は維持する。
+- ルーレット実行画面では、最初に「ルーレットを実行する」ボタンのみ（または明確に主たる操作として）表示する。
+- そのボタンを押すまではルーレットを開始しない（自動実行しない）。
+- ボタン押下でルーレットが実行開始される。
 
-Scope (likely files)
-- Backend: `/app/backend/main.py` (valid code list, DB seeding, /api/play logic)
-- Frontend: `/app/frontend/app.js` (client-side validation and flow)
-- Docs/tests: `/app/README.md`, `/app/docs/spec/demo-scenario.md`, `/app/docs/spec/test-plan.md`
+受け入れ条件:
+- 確認 → 画面遷移直後にルーレットが自動で回り始めない。
+- 「ルーレットを実行する」ボタン押下でのみルーレットが開始される。
 
-Implementation guidance
-1) Backend validation and single-use behavior
-- Replace `VALID_CODE` with an allow-list for 2027-2035.
-- Seed `lid_codes` for each allowed code if missing. Do not reset used codes back to `new` on startup.
-- If a code is not in the allow-list, return `status: "invalid"` and record an invalid attempt.
-- If a code is in the allow-list but has already been used (any status other than `new`), return `status: "invalid"` and record an invalid attempt.
-- When a `new` code is played, mark it as used (win or lose). Do not allow re-display of coupons on subsequent attempts.
-- Keep the invalid message aligned with the frontend invalid-input message (currently "無効な番号です").
-
-2) Frontend behavior
-- Update the client-side allow-list to 2027-2035 (or remove the single-code check) so valid codes pass initial validation.
-- If the backend returns `status: "invalid"`, show the input error message and stay on the input screen (same behavior as an invalid code entry).
-- Only show the roulette screen for `win` / `lose` responses.
-
-3) Docs/tests
-- Update demo specs and test plan to reflect the new valid codes and the single-use rule.
-
-Acceptance criteria
-- Only 2027-2035 are accepted as valid identifiers.
-- First play with any valid identifier behaves normally (win/lose).
-- Second play with the same identifier shows the same invalid-input error and does not show the roulette screen.
-- Invalid codes (e.g., 0000) still show the invalid-input error.
-
-Suggested manual checks
-- Play 2027 once, then again; second attempt is invalid (no roulette).
-- Play 2035 once, then again; second attempt is invalid (no roulette).
-- Enter an invalid code (0000) and confirm the error message matches the reused-code error.
+備考:
+- 既存の識別番号のバリデーションや遷移フローは変えない。
+- 画面文言は「ルーレットを実行する」を使用する。
+</INSTRUCTIONS>
