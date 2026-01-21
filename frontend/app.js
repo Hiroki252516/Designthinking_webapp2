@@ -30,6 +30,7 @@ let currentExpiry = null;
 let spinTimer = null;
 let pendingCode = null;
 let isRunning = false;
+let isValidating = false;
 
 const VALID_CODES = ['2027', '2028', '2029', '2030', '2031', '2032', '2033', '2034', '2035'];
 
@@ -71,7 +72,7 @@ function setInputError(message) {
 
 function updateSubmitState() {
   const isComplete = /^\d{4}$/.test(code);
-  submitBtn.disabled = !isComplete;
+  submitBtn.disabled = !isComplete || isValidating;
 }
 
 function isValidCode() {
@@ -136,15 +137,36 @@ function resetResultScreen() {
   isRunning = false;
 }
 
-function confirmCode() {
+async function confirmCode() {
   if (!/^\d{4}$/.test(code)) return;
-  if (!isValidCode()) {
-    setInputError('無効な番号です');
-    return;
+  if (isValidating) return;
+  const codeToValidate = code;
+  isValidating = true;
+  submitBtn.disabled = true;
+  setInputError('');
+  try {
+    const response = await fetch('/api/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lid_code: codeToValidate })
+    });
+    if (!response.ok) {
+      throw new Error('API error');
+    }
+    const data = await response.json();
+    if (data.status === 'ok') {
+      pendingCode = codeToValidate;
+      resetResultScreen();
+      switchScreen('result');
+      return;
+    }
+    setInputError(data.message || '無効な番号です');
+  } catch (error) {
+    setInputError('通信エラーが発生しました。時間をおいて再試行してください。');
+  } finally {
+    isValidating = false;
+    updateSubmitState();
   }
-  pendingCode = code;
-  resetResultScreen();
-  switchScreen('result');
 }
 
 async function startRoulette() {

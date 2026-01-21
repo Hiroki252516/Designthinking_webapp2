@@ -28,6 +28,10 @@ class PlayRequest(BaseModel):
 	lid_code: str
 
 
+class ValidateRequest(BaseModel):
+	lid_code: str
+
+
 class RedeemRequest(BaseModel):
 	coupon_token: str
 
@@ -269,6 +273,24 @@ def play(payload: PlayRequest) -> dict:
 		)
 		conn.commit()
 		return {"status": "lose", "message": "残念！ハズレです。"}
+	finally:
+		conn.close()
+
+
+@app.post("/api/validate")
+def validate(payload: ValidateRequest) -> dict:
+	code = payload.lid_code.strip()
+	if not (code.isdigit() and len(code) == 4):
+		return {"status": "invalid", "message": "無効な番号です"}
+	if code not in VALID_CODES:
+		return {"status": "invalid", "message": "無効な番号です"}
+
+	conn = get_conn()
+	try:
+		row = conn.execute("SELECT status FROM lid_codes WHERE code = ?", (code,)).fetchone()
+		if not row or row["status"] != "new":
+			return {"status": "invalid", "message": "無効な番号です"}
+		return {"status": "ok"}
 	finally:
 		conn.close()
 
