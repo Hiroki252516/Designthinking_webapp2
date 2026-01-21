@@ -28,7 +28,7 @@ let currentCoupon = null;
 let currentExpiry = null;
 let spinTimer = null;
 
-const VALID_CODE = '2026';
+const VALID_CODES = ['2027', '2028', '2029', '2030', '2031', '2032', '2033', '2034', '2035'];
 
 function switchScreen(name) {
   Object.values(screens).forEach((screen) => screen.classList.remove('is-active'));
@@ -72,7 +72,7 @@ function updateSubmitState() {
 }
 
 function isValidCode() {
-  return /^\d{4}$/.test(code) && code === VALID_CODE;
+  return /^\d{4}$/.test(code) && VALID_CODES.includes(code);
 }
 
 function randomDigits() {
@@ -118,12 +118,6 @@ async function play() {
     return;
   }
   submitBtn.disabled = true;
-  resultMessage.textContent = '抽選中...';
-  resultDetail.textContent = '';
-  showCouponBtn.classList.add('hidden');
-  switchScreen('result');
-
-  const spinPromise = spinReels(1400);
 
   let data = null;
   try {
@@ -137,13 +131,29 @@ async function play() {
     }
     data = await response.json();
   } catch (error) {
-    await spinPromise;
-    setReels([0, 0, 0]);
-    resultMessage.textContent = '通信エラー';
-    resultDetail.textContent = '時間をおいて再試行してください。';
+    submitBtn.disabled = false;
+    setInputError('通信エラー。時間をおいて再試行してください。');
     return;
   }
 
+  if (data.status === 'invalid') {
+    submitBtn.disabled = false;
+    setInputError(data.message || '無効な番号です');
+    return;
+  }
+
+  if (data.status !== 'win' && data.status !== 'lose') {
+    submitBtn.disabled = false;
+    setInputError(data.message || 'エラーが発生しました。');
+    return;
+  }
+
+  resultMessage.textContent = '抽選中...';
+  resultDetail.textContent = '';
+  showCouponBtn.classList.add('hidden');
+  switchScreen('result');
+
+  const spinPromise = spinReels(1400);
   await spinPromise;
 
   if (data.status === 'win') {
@@ -153,7 +163,7 @@ async function play() {
     showCouponBtn.classList.remove('hidden');
     currentCoupon = data.coupon_token;
     currentExpiry = data.expires_at;
-  } else if (data.status === 'lose') {
+  } else {
     const digits = randomDigits();
     if (digits[0] === 7 && digits[1] === 7 && digits[2] === 7) {
       digits[2] = 5;
@@ -161,11 +171,8 @@ async function play() {
     setReels(digits);
     resultMessage.textContent = '残念...';
     resultDetail.textContent = data.message || 'また挑戦してください。';
-  } else {
-    setReels([0, 0, 0]);
-    resultMessage.textContent = '無効';
-    resultDetail.textContent = data.message || '識別番号を確認してください。';
   }
+  submitBtn.disabled = false;
 }
 
 function renderCoupon() {
@@ -226,7 +233,7 @@ window.addEventListener('keydown', (event) => {
 function initFromQuery() {
   const params = new URLSearchParams(window.location.search);
   const codeParam = params.get('code');
-  if (codeParam === VALID_CODE) {
+  if (VALID_CODES.includes(codeParam)) {
     code = codeParam;
     renderCode();
   }

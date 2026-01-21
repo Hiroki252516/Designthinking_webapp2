@@ -9,20 +9,20 @@
    - 入力: 0000
    - 期待: status=invalid / メッセージ表示
 
-2. lose
-   - 入力: 1234
-   - 期待: status=lose / ルーレット非当選 / QR非表示
+2. play (valid)
+   - 入力: 2027
+   - 期待: status=win または lose / ルーレット表示 / win の場合は QR 表示
 
-3. win
-   - 入力: 7777
-   - 期待: status=win / ルーレット 777 / QR表示 / トークン表示
+3. reuse (invalid)
+   - 2 の後に同じコードを再入力
+   - 期待: status=invalid / 入力画面でエラーメッセージ / ルーレット非表示
 
-4. win 再表示
-   - 3 の後に同じコードを再入力
-   - 期待: 同一トークン再表示
+4. play (valid 2)
+   - 入力: 2035
+   - 期待: status=win または lose / ルーレット表示 / win の場合は QR 表示
 
 5. redeem ok
-   - 3 で発行したトークンを /redeem に入力
+   - 2 または 4 で発行したトークンを /redeem に入力
    - 期待: status=ok
 
 6. redeem 二重引換

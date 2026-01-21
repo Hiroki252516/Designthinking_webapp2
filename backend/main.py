@@ -18,7 +18,7 @@ FRONTEND_DIR = os.path.join(APP_ROOT, "frontend")
 DB_PATH = os.environ.get("DB_PATH", os.path.join(APP_ROOT, "backend", "app.db"))
 COUPON_SECRET = os.environ.get("COUPON_SECRET", "demo-secret-change-me")
 
-VALID_CODE = "2026"
+VALID_CODES = [str(code) for code in range(2027, 2036)]
 OUTCOME_PENDING = "pending"
 OUTCOME_WIN = "win"
 OUTCOME_LOSE = "lose"
@@ -86,24 +86,18 @@ def init_db() -> None:
 			)
 			"""
 		)
-		conn.execute("DELETE FROM lid_codes WHERE code != ?", (VALID_CODE,))
-		row = conn.execute("SELECT id, outcome, status FROM lid_codes WHERE code = ?", (VALID_CODE,)).fetchone()
-		if row:
-			if row["status"] == "new" and row["outcome"] != OUTCOME_PENDING:
+		for code in VALID_CODES:
+			row = conn.execute("SELECT id, outcome, status FROM lid_codes WHERE code = ?", (code,)).fetchone()
+			if not row:
+				conn.execute(
+					"INSERT INTO lid_codes (code, outcome, status) VALUES (?, ?, 'new')",
+					(code, OUTCOME_PENDING),
+				)
+			elif row["status"] == "new" and row["outcome"] not in (OUTCOME_WIN, OUTCOME_LOSE, OUTCOME_PENDING):
 				conn.execute(
 					"UPDATE lid_codes SET outcome = ? WHERE code = ?",
-					(OUTCOME_PENDING, VALID_CODE),
+					(OUTCOME_PENDING, code),
 				)
-			elif row["outcome"] not in (OUTCOME_WIN, OUTCOME_LOSE, OUTCOME_PENDING):
-				conn.execute(
-					"UPDATE lid_codes SET outcome = ? WHERE code = ?",
-					(OUTCOME_PENDING, VALID_CODE),
-				)
-		else:
-			conn.execute(
-				"INSERT INTO lid_codes (code, outcome, status) VALUES (?, ?, 'new')",
-				(VALID_CODE, OUTCOME_PENDING),
-			)
 		conn.execute("DELETE FROM coupons WHERE lid_code_id NOT IN (SELECT id FROM lid_codes)")
 		conn.execute(
 			"DELETE FROM play_attempts WHERE lid_code_id NOT IN (SELECT id FROM lid_codes) AND lid_code_id IS NOT NULL"
@@ -191,8 +185,8 @@ def redeem_page() -> FileResponse:
 def play(payload: PlayRequest) -> dict:
 	code = payload.lid_code.strip()
 	if not (code.isdigit() and len(code) == 4):
-		return {"status": "invalid", "message": "番号が無効です"}
-	if code != VALID_CODE:
+		return {"status": "invalid", "message": "無効な番号です"}
+	if code not in VALID_CODES:
 		conn = get_conn()
 		try:
 			conn.execute(
@@ -202,7 +196,7 @@ def play(payload: PlayRequest) -> dict:
 			conn.commit()
 		finally:
 			conn.close()
-		return {"status": "invalid", "message": "番号が無効です"}
+		return {"status": "invalid", "message": "無効な番号です"}
 
 	conn = get_conn()
 	try:
@@ -210,27 +204,19 @@ def play(payload: PlayRequest) -> dict:
 		if not row:
 			conn.execute(
 				"INSERT INTO lid_codes (code, outcome, status) VALUES (?, ?, 'new')",
-				(VALID_CODE, OUTCOME_PENDING),
+				(code, OUTCOME_PENDING),
 			)
 			row = conn.execute("SELECT * FROM lid_codes WHERE code = ?", (code,)).fetchone()
 
 		status = row["status"]
 		outcome = row["outcome"]
-		if status in ("won", "redeemed"):
-			coupon = conn.execute(
-				"SELECT * FROM coupons WHERE lid_code_id = ?",
-				(row["id"],),
-			).fetchone()
-			message = "当選済みのためクーポンを再表示します。"
-			if status == "redeemed":
-				message = "この識別番号は引換済みですがクーポンを表示します。"
-			if coupon:
-				return {
-					"status": "win",
-					"message": message,
-					"coupon_token": coupon["token"],
-					"expires_at": coupon["expires_at"],
-				}
+		if status != "new":
+			conn.execute(
+				"INSERT INTO play_attempts (lid_code_id, created_at, result) VALUES (?, ?, ?)",
+				(row["id"], now_iso(), "invalid"),
+			)
+			conn.commit()
+			return {"status": "invalid", "message": "無効な番号です"}
 
 		outcome_updated = False
 		if outcome == OUTCOME_PENDING:
@@ -243,11 +229,6 @@ def play(payload: PlayRequest) -> dict:
 				(outcome, row["id"]),
 			)
 			outcome_updated = True
-
-		if status == "played" and outcome == OUTCOME_LOSE:
-			if outcome_updated:
-				conn.commit()
-			return {"status": "lose", "message": "残念！ハズレです。"}
 
 		if outcome == OUTCOME_WIN:
 			token, expires_at = issue_coupon(code)

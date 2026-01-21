@@ -1,23 +1,38 @@
-# AGENTS
+# AGENTS Instructions
 
-## 目的
-- ルーレット画面に遷移して抽選が行われるタイミングで、当たり確率を **25%** にする。
-- **他の機能・仕様は一切変更しない**。
+Goal
+- Replace the single valid identifier with the 9 valid identifiers: 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035.
+- Each valid identifier is single-use. After a roulette play (win or lose), reusing the same identifier must be treated as invalid and behave exactly like an invalid input (show the same error message, no roulette screen).
 
-## 重要な制約
-- フロントの表示/演出/文言/画面遷移は変更しない。
-- APIのレスポンス形式・メッセージ・クーポン発行/再表示/引換ロジックは変更しない。
-- 既存の「当選済み/引換済みは同一クーポンを再表示する」挙動を維持する。
+Scope (likely files)
+- Backend: `/app/backend/main.py` (valid code list, DB seeding, /api/play logic)
+- Frontend: `/app/frontend/app.js` (client-side validation and flow)
+- Docs/tests: `/app/README.md`, `/app/docs/spec/demo-scenario.md`, `/app/docs/spec/test-plan.md`
 
-## 変更ポイント（実装者向けメモ）
-- `backend/main.py` の `/api/play` が当落を決めている。
-- 現状は `VALID_OUTCOME = "win"` を前提に固定当選になっているため、**25%抽選**に変更する。
-- `lid_codes.outcome` は `NOT NULL` なので、未抽選状態は `"pending"` などのプレースホルダを使う（スキーマ変更は避ける）。
-- 抽選は **初回プレイ時のみ** 行い、結果はDBに保存して以後は同じ結果を返す（既存挙動を崩さない）。
-- 25% は `secrets.randbelow(4) == 0` のように実装してよい。
-- `init_db()` が起動時に outcome を固定で上書きしている点に注意（ランダム結果を潰さない）。
+Implementation guidance
+1) Backend validation and single-use behavior
+- Replace `VALID_CODE` with an allow-list for 2027-2035.
+- Seed `lid_codes` for each allowed code if missing. Do not reset used codes back to `new` on startup.
+- If a code is not in the allow-list, return `status: "invalid"` and record an invalid attempt.
+- If a code is in the allow-list but has already been used (any status other than `new`), return `status: "invalid"` and record an invalid attempt.
+- When a `new` code is played, mark it as used (win or lose). Do not allow re-display of coupons on subsequent attempts.
+- Keep the invalid message aligned with the frontend invalid-input message (currently "無効な番号です").
 
-## 期待される挙動
-- 有効コードの初回プレイ時：25%で `status=win`、75%で `status=lose`。
-- 2回目以降：前回の結果を維持（当選済みなら同一クーポン再表示、ハズレならハズレ）。
-- 無効コードや通信エラー等の挙動は現状維持。
+2) Frontend behavior
+- Update the client-side allow-list to 2027-2035 (or remove the single-code check) so valid codes pass initial validation.
+- If the backend returns `status: "invalid"`, show the input error message and stay on the input screen (same behavior as an invalid code entry).
+- Only show the roulette screen for `win` / `lose` responses.
+
+3) Docs/tests
+- Update demo specs and test plan to reflect the new valid codes and the single-use rule.
+
+Acceptance criteria
+- Only 2027-2035 are accepted as valid identifiers.
+- First play with any valid identifier behaves normally (win/lose).
+- Second play with the same identifier shows the same invalid-input error and does not show the roulette screen.
+- Invalid codes (e.g., 0000) still show the invalid-input error.
+
+Suggested manual checks
+- Play 2027 once, then again; second attempt is invalid (no roulette).
+- Play 2035 once, then again; second attempt is invalid (no roulette).
+- Enter an invalid code (0000) and confirm the error message matches the reused-code error.
