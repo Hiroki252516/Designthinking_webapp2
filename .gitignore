@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.Python
+env/
+venv/
+
+# Database
+*.db
+app.db
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+*.swp

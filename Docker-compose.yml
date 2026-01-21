@@ -1,0 +1,25 @@
+services:
+ 
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      
+      
+
+ 
+      CODEX_HOME: /root/.codex
+    # Linux 環境でも host.docker.internal を使えるようにする
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    ports:
+      - "8002:8000"
+    volumes:
+      - .:/app
+      - ${HOME}/.codex:/root/.codex
+
+volumes:
+  db-data:
